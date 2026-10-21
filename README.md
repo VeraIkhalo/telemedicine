@@ -1,117 +1,64 @@
 # Amrutam Telemedicine Backend
 
-Node.js (Express) + PostgreSQL backend for Amrutam's telemedicine platform: auth with MFA and roles, doctor availability and booking, consultation lifecycle and prescriptions, search, audit trails, and admin analytics.
+Backend for Amrutam's telemedicine platform, built with Node.js (Express) and PostgreSQL.
 
-| Doc | What's in it |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, booking sequence diagram, ER diagram, retries, partitioning, caching/concurrency, sagas, backup/DR |
-| [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3 spec (paste into https://editor.swagger.io) |
-| [docs/SECURITY.md](docs/SECURITY.md) | Security checklist, data classification, threat model (STRIDE), OWASP mapping, key rotation |
+It covers sign-up and login (with MFA and roles), doctor search and availability, booking, the consultation lifecycle, prescriptions, audit logs and admin analytics.
 
-## Test console (frontend)
+**Docs:** [Architecture](docs/ARCHITECTURE.md) · [Security & threat model](docs/SECURITY.md) · [API spec](docs/openapi.yaml)
 
-Open **http://localhost:3000** once the API is running. Log in with one click as a demo patient, doctor or admin, then:
-patient → search doctors, book a slot, resend the same booking to see idempotency, view notes/prescriptions;
-doctor → publish slots, start/complete consultations with encrypted notes, write prescriptions;
-admin → analytics, verify doctors, browse the audit log. A side panel logs every API call with its request/response.
-Interactive API docs: **http://localhost:3000/docs**.
+## Running it
 
-## Quick start (Docker — everything in one command)
-
-```bash
-docker compose up --build
-```
-
-| Service | URL |
-|---|---|
-| API | http://localhost:3000 (health: `/healthz`, `/readyz`, metrics: `/metrics`) |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3001 |
-| Jaeger (traces) | http://localhost:16686 |
-
-Seed demo users (admin, verified doctor with slots, patient — password `Passw0rd!234`):
-
-```bash
-docker compose exec api node scripts/seed.js
-```
-
-## Fastest local run (no Docker, no Postgres install)
-
-Uses a portable PostgreSQL from npm on port 5433. Run each in its own terminal:
+Needs Node.js 20+. No Docker or PostgreSQL install required — `npm run db` starts a portable PostgreSQL.
 
 ```bash
 npm install
-npm run db                    # terminal 1: portable Postgres (keep open)
-# create .env with:
-#   DATABASE_URL=postgres://postgres:postgres@localhost:5433/amrutam
-#   JWT_SECRET=local-dev-secret-change-me
-#   ENCRYPTION_KEYS=v1:BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
-npm run migrate && npm run seed
-npm start                     # terminal 2: API on :3000
-npm run worker                # terminal 3: background jobs
-```
-
-## Local development (without Docker)
-
-Requires Node 20+ and PostgreSQL 14+.
-
-```bash
-cp .env.example .env          # then edit DATABASE_URL etc.
-npm install
+cp .env.example .env
+npm run db          # terminal 1 — database (leave running)
 npm run migrate
-npm run seed
-npm run dev                   # API on :3000
-npm run worker                # background jobs (payments, notifications, PDFs)
+npm run seed        # demo users, doctors and slots
+npm start           # terminal 2 — app on http://localhost:3000
+npm run worker      # terminal 3 — background jobs (payments, notifications)
 ```
+
+Or with Docker: `docker compose up --build`, then `docker compose exec api node scripts/seed.js`.
+This also starts Prometheus (:9090), Grafana (:3001) and Jaeger (:16686).
+
+## Trying it out
+
+Open **http://localhost:3000** and log in with a demo account (password `Passw0rd!234`):
+
+| Role | Email |
+|---|---|
+| Patient | patient@amrutam.dev |
+| Doctor | doctor@amrutam.dev |
+| Admin | admin@amrutam.dev |
+
+API reference: http://localhost:3000/docs · Metrics: http://localhost:3000/metrics
 
 ## Tests
 
 ```bash
-npm test                                    # unit tests
-TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/amrutam_test npm test   # + integration tests
+npm test
 ```
 
-The integration suite (runs in CI against a real Postgres) covers: registration validation, search filters, idempotent booking replay, **4 concurrent bookings of one slot → exactly one succeeds**, the payment saga and its compensation, the full consultation lifecycle with prescriptions, encrypted notes, IDOR protection, RBAC on admin routes, and the append-only audit log.
-
-## Demo walkthrough (curl)
-
-```bash
-API=http://localhost:3000/api/v1
-TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"patient@amrutam.dev","password":"Passw0rd!234"}' | jq -r .accessToken)
-
-# search doctors
-curl -s "$API/doctors?specialization=ayurveda&language=hindi" | jq
-DOC=$(curl -s "$API/doctors" | jq -r '.data[0].id')
-SLOT=$(curl -s "$API/doctors/$DOC/slots" | jq -r '.[0].id')
-
-# book (run twice with the same key -> same response, header Idempotent-Replayed: true)
-curl -si -X POST $API/consultations -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-1' -d "{\"slotId\":\"$SLOT\"}"
-```
-
-## Project layout
-
-```
-src/
-  app.js, server.js, container.js   # express app, process entry, DI composition root
-  config.js, db.js                  # env-based config, pg pool + transaction helper with retry
-  middleware/                       # auth (JWT+RBAC), idempotency, validation, errors
-  modules/{auth,doctors,consultations,admin}/  # routes + services per domain
-  lib/                              # crypto (AES-GCM + key rotation), cache, retry, audit, jobs, state machine
-  jobs/                             # worker (SKIP LOCKED queue) + handlers (payment saga, refunds, notifications, PDFs)
-  observability/                    # pino logger, Prometheus metrics, OpenTelemetry tracing
-migrations/                         # SQL schema
-infra/terraform, infra/k8s          # RDS Multi-AZ + replica + KMS + Redis; k8s Deployments, HPA, PDB
-observability/                      # Prometheus scrape config, SLO alert rules, Grafana datasources
-.github/workflows/ci.yml            # tests, npm audit, Docker build, Trivy scan, CodeQL
-```
+With `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5433/amrutam_test` set, this also runs the integration tests against a real database, including a test that fires 4 simultaneous bookings at one slot and checks exactly one succeeds. CI runs these on every push (`.github/workflows/ci.yml`).
 
 ## Key design decisions
 
-* **Idempotency** — every booking/state-change/prescription write requires `Idempotency-Key`; responses are stored and replayed.
-* **No double booking** — row lock (`SELECT … FOR UPDATE`) + partial unique index + idempotency.
-* **Saga with outbox** — booking commits slot reservation + pending payment + job atomically; the worker charges and either confirms or compensates.
-* **Async jobs** — Postgres-backed queue (`FOR UPDATE SKIP LOCKED`), exponential backoff with jitter, dead-letter state.
-* **Security** — bcrypt, TOTP MFA, RBAC + object-level checks, AES-256-GCM field encryption with key rotation, append-only audit log, rate limiting, zod validation, env-only secrets.
-* **Observability** — request-ID'd JSON logs, Prometheus histograms + SLO alerts (p95 200/500 ms, error budget), OpenTelemetry traces.
+- **No double booking:** the slot row is locked during booking, and a unique index backs it up.
+- **Idempotent writes:** bookings and other writes need an `Idempotency-Key` header. Retrying returns the original result instead of repeating the action.
+- **Payments as a saga:** booking reserves the slot and queues a payment job in one transaction. The worker charges, then confirms the booking, or cancels it and frees the slot if payment fails.
+- **Security:** hashed passwords, MFA, role checks, server-side logout, encrypted clinical notes, an append-only audit log, rate limiting and input validation.
+- **Observability:** structured logs with request IDs, Prometheus metrics with latency alerts, OpenTelemetry tracing.
+
+## Layout
+
+```
+src/modules/      auth, doctors, consultations, admin (routes + services)
+src/middleware/   auth/roles, idempotency, validation, errors
+src/jobs/         background worker and job handlers
+migrations/       database schema
+infra/            Terraform (AWS) and Kubernetes manifests
+public/           web test page
+tests/            unit and integration tests
+```
