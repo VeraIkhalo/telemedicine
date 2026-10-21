@@ -4,8 +4,8 @@
   "description": "Production-grade telemedicine backend: auth/MFA/RBAC, availability & booking, consultations, prescriptions, search, audit, analytics.",
   "main": "src/server.js",
   "scripts": {
-    "start": "node --env-file-if-exists=.env -r ./src/observability/tracing.js src/server.js",
-    "dev": "node --watch -r ./src/observability/tracing.js src/server.js",
+    "start": "node api.js && node --env-file-if-exists=.env -r ./src/observability/tracing.js src/server.js",
+    "dev": "node api.js && node --watch -r ./src/observability/tracing.js src/server.js",
     "worker": "node --env-file-if-exists=.env -r ./src/observability/tracing.js src/jobs/worker.js",
     "db": "node scripts/local-db.mjs",
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
