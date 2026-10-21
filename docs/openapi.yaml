@@ -6,6 +6,7 @@ info:
     Auth, doctor search and availability, booking, consultation lifecycle, prescriptions and admin analytics.
     All write endpoints on /consultations require an `Idempotency-Key` header.
 servers:
+  - url: /api/v1
   - url: http://localhost:3000/api/v1
 security:
   - bearerAuth: []

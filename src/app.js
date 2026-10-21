@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const pinoHttp = require('pino-http');
 const crypto = require('crypto');
+const path = require('path');
 const config = require('./config');
 const logger = require('./observability/logger');
 const { register, metricsMiddleware } = require('./observability/metrics');
@@ -16,6 +17,17 @@ function createApp(container) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind load balancer; needed for correct client IPs in rate limit/audit
+
+  // Interactive API docs (Swagger UI). Registered before helmet so its CDN assets are allowed.
+  app.get('/openapi.yaml', (_req, res) => res.type('text/yaml').sendFile(path.join(__dirname, '..', 'docs', 'openapi.yaml')));
+  app.get('/docs', (_req, res) =>
+    res.type('html').send(`<!doctype html><html><head><title>Amrutam API</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css"></head>
+<body><div id="ui"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
+<script>SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#ui', persistAuthorization: true });</script>
+</body></html>`)
+  );
 
   app.use(helmet());
   app.use(express.json({ limit: '100kb' }));

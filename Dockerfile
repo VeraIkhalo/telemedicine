@@ -12,6 +12,7 @@ COPY package.json ./
 COPY src ./src
 COPY migrations ./migrations
 COPY scripts ./scripts
+COPY docs ./docs
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s CMD wget -qO- http://localhost:3000/healthz || exit 1
