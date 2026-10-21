@@ -13,6 +13,7 @@
     doctors: [],
     slotsByDoctor: {},
     lastBooking: null, // { key, body } — lets the user resend the same request to see idempotency
+    authView: 'login', // 'login' | 'register'
   };
 
   try { S.token = sessionStorage.getItem('amrutam.token'); } catch { /* storage unavailable */ }
@@ -83,6 +84,14 @@
   const redact = (b) => (b && b.password ? { ...b, password: '••••••' } : b);
   $('#clear-log').addEventListener('click', () => { $('#log').innerHTML = ''; });
 
+  // API log is a developer aid: hidden by default, toggled from the header.
+  $('#toggle-log').addEventListener('click', () => {
+    const panel = $('#log-panel');
+    panel.hidden = !panel.hidden;
+    document.body.classList.toggle('with-log', !panel.hidden);
+    $('#toggle-log').textContent = panel.hidden ? 'Show API log' : 'Hide API log';
+  });
+
   // Run an async action and show any error as a toast.
   async function run(fn) {
     try { await fn(); } catch (e) { toast(e.message); }
@@ -108,9 +117,12 @@
     who.innerHTML = `<span>${esc(S.me.full_name)} ${badge(S.me.role)}</span><button class="ghost small" data-action="logout">Log out</button>`;
   }
 
+  function authView() {
+    return `<div class="auth-wrap">${S.authView === 'register' ? registerView() : loginView()}</div>`;
+  }
+
   function loginView() {
     return `
-    <div class="grid2">
       <section class="card">
         <h2>Log in</h2>
         <p class="muted">Use a demo account, or your own after registering.</p>
@@ -126,10 +138,14 @@
           <div class="actions"><button type="submit">Log in</button></div>
         </form>
         <div class="callout">Demo password for all three: <code>Passw0rd!234</code></div>
-      </section>
+        <p class="switch">New here? <button class="linkish" data-action="auth-view" data-view="register">Create an account</button></p>
+      </section>`;
+  }
 
+  function registerView() {
+    return `
       <section class="card">
-        <h2>Register</h2>
+        <h2>Create an account</h2>
         <form id="register-form">
           <label>Account type</label>
           <select name="role"><option value="patient">Patient</option><option value="doctor">Doctor</option></select>
@@ -149,8 +165,8 @@
           </div>
           <div class="actions"><button type="submit">Create account</button></div>
         </form>
-      </section>
-    </div>`;
+        <p class="switch">Already have an account? <button class="linkish" data-action="auth-view" data-view="login">Log in</button></p>
+      </section>`;
   }
 
   // ---------- views ----------
@@ -169,7 +185,7 @@
   async function render() {
     renderWho();
     if (!S.me) {
-      main.innerHTML = loginView();
+      main.innerHTML = authView();
       return;
     }
     main.innerHTML = tabsBar() + '<div id="view"><div class="card muted">Loading…</div></div>';
@@ -376,6 +392,7 @@
     const { action } = el.dataset;
 
     if (action === 'logout') return logout();
+    if (action === 'auth-view') { S.authView = el.dataset.view; return render(); }
     if (action === 'tab') { S.tab = el.dataset.tab; return render(); }
 
     if (action === 'demo') {

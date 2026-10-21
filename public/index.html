@@ -9,13 +9,16 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="leaf">❦</span> Amrutam <small>Telemedicine test console</small></div>
-    <div id="who" class="who"></div>
+    <div class="who">
+      <span id="who"></span>
+      <button id="toggle-log" class="ghost small" title="Show the raw API calls this page makes">Show API log</button>
+    </div>
   </header>
 
   <div class="layout">
     <main id="main"></main>
 
-    <aside class="log">
+    <aside class="log" id="log-panel" hidden>
       <div class="log-head">
         <h3>API request log</h3>
         <button id="clear-log" class="ghost small">Clear</button>
