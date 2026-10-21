@@ -27,6 +27,22 @@ Seed demo users (admin, verified doctor with slots, patient — password `Passw0
 docker compose exec api node scripts/seed.js
 ```
 
+## Fastest local run (no Docker, no Postgres install)
+
+Uses a portable PostgreSQL from npm on port 5433. Run each in its own terminal:
+
+```bash
+npm install
+npm run db                    # terminal 1: portable Postgres (keep open)
+# create .env with:
+#   DATABASE_URL=postgres://postgres:postgres@localhost:5433/amrutam
+#   JWT_SECRET=local-dev-secret-change-me
+#   ENCRYPTION_KEYS=v1:BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+npm run migrate && npm run seed
+npm start                     # terminal 2: API on :3000
+npm run worker                # terminal 3: background jobs
+```
+
 ## Local development (without Docker)
 
 Requires Node 20+ and PostgreSQL 14+.

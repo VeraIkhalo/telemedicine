@@ -1,6 +1,6 @@
 const { audit } = require('../../lib/audit');
 const { enqueue } = require('../../lib/jobs');
-const { canTransition } = require('../../lib/stateMachine');
+const { canTransition, TRANSITIONS } = require('../../lib/stateMachine');
 const { bookings } = require('../../observability/metrics');
 const { notFound, forbidden, conflict, badRequest } = require('../../lib/errors');
 
@@ -85,6 +85,8 @@ function createConsultationsService({ db, cipher, cache }) {
         throw notFound('Consultation not found');
       }
       if (!canTransition(cons.status, status, user.role)) {
+        // Valid transition but wrong role -> 403; impossible transition -> 409.
+        if (TRANSITIONS[cons.status]?.[status]) throw forbidden(`Role ${user.role} cannot set status ${status}`);
         throw conflict(`Cannot move from ${cons.status} to ${status} as ${user.role}`);
       }
       const notesEnc = notes != null ? cipher.encrypt(notes) : cons.notes_enc;

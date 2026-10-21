@@ -4,11 +4,12 @@
   "description": "Production-grade telemedicine backend: auth/MFA/RBAC, availability & booking, consultations, prescriptions, search, audit, analytics.",
   "main": "src/server.js",
   "scripts": {
-    "start": "node -r ./src/observability/tracing.js src/server.js",
+    "start": "node --env-file-if-exists=.env -r ./src/observability/tracing.js src/server.js",
     "dev": "node --watch -r ./src/observability/tracing.js src/server.js",
-    "worker": "node -r ./src/observability/tracing.js src/jobs/worker.js",
-    "migrate": "node scripts/migrate.js",
-    "seed": "node scripts/seed.js",
+    "worker": "node --env-file-if-exists=.env -r ./src/observability/tracing.js src/jobs/worker.js",
+    "db": "node scripts/local-db.mjs",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
+    "seed": "node --env-file-if-exists=.env scripts/seed.js",
     "lint": "eslint src tests scripts",
     "test": "jest --runInBand"
   },
@@ -32,6 +33,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "embedded-postgres": "^17.5.0-beta.15",
     "eslint": "^8.57.0",
     "jest": "^29.7.0",
     "supertest": "^7.0.0"
