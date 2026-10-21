@@ -17,22 +17,34 @@ async function seed() {
 
   await upsertUser('admin@amrutam.dev', 'admin', 'Admin');
   await upsertUser('patient@amrutam.dev', 'patient', 'Priya Patient');
-  const doctorId = await upsertUser('doctor@amrutam.dev', 'doctor', 'Dr. Arjun Vaidya');
-  await db.query(
-    `INSERT INTO doctors (id, specialization, years_experience, fee_cents, languages, bio, rating, verified)
-     VALUES ($1, 'Ayurveda', 12, 50000, '{english,hindi}', 'Panchakarma and digestive health', 4.8, TRUE)
-     ON CONFLICT DO NOTHING`,
-    [doctorId]
-  );
-  for (let i = 1; i <= 10; i++) {
-    const start = new Date(Date.now() + i * 3600_000);
-    start.setMinutes(0, 0, 0);
+  const doctors = [
+    ['doctor@amrutam.dev', 'Dr. Arjun Vaidya', 'Ayurveda', 12, 50000, '{english,hindi}', 'Panchakarma and digestive health', 4.8],
+    ['meera@amrutam.dev', 'Dr. Meera Nair', 'Dermatology', 8, 60000, '{english,malayalam}', 'Ayurvedic skin and hair care', 4.7],
+    ['rohan@amrutam.dev', 'Dr. Rohan Sharma', 'General Physician', 15, 30000, '{english,hindi}', 'Lifestyle disorders, diabetes, BP', 4.6],
+    ['kavya@amrutam.dev', 'Dr. Kavya Iyer', 'Gynecology', 10, 70000, '{english,tamil}', "Women's health and PCOS", 4.9],
+    ['sameer@amrutam.dev', 'Dr. Sameer Khan', 'Nutrition', 6, 25000, '{english,hindi,urdu}', 'Diet plans and weight management', 4.5],
+  ];
+  for (const [email, name, spec, years, fee, langs, bio, rating] of doctors) {
+    const doctorId = await upsertUser(email, 'doctor', name);
     await db.query(
-      `INSERT INTO availability_slots (doctor_id, start_time, end_time) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-      [doctorId, start, new Date(start.getTime() + 30 * 60_000)]
+      `INSERT INTO doctors (id, specialization, years_experience, fee_cents, languages, bio, rating, verified)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE) ON CONFLICT DO NOTHING`,
+      [doctorId, spec, years, fee, langs, bio, rating]
     );
+    // Open 30-min slots over the next 3 days, 10:00-13:00 local server time.
+    for (let day = 1; day <= 3; day++) {
+      for (let h = 0; h < 6; h++) {
+        const start = new Date();
+        start.setDate(start.getDate() + day);
+        start.setHours(10, h * 30, 0, 0);
+        await db.query(
+          `INSERT INTO availability_slots (doctor_id, start_time, end_time) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [doctorId, start, new Date(start.getTime() + 30 * 60_000)]
+        );
+      }
+    }
   }
-  console.log('seeded: admin@amrutam.dev / doctor@amrutam.dev / patient@amrutam.dev (password Passw0rd!234)');
+  console.log('seeded: admin@amrutam.dev, patient@amrutam.dev, 5 doctors (doctor@amrutam.dev, ...) - password Passw0rd!234');
   await db.close();
 }
 

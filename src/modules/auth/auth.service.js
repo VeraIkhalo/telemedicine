@@ -47,8 +47,20 @@ function createAuthService({ db, cipher }) {
         throw unauthorized('Invalid MFA code');
       }
     }
+    const { rows: s } = await db.query(
+      `INSERT INTO sessions (user_id, expires_at, ip, user_agent)
+       VALUES ($1, now() + interval '1 day', $2, $3) RETURNING id`,
+      [user.id, req?.ip || null, req?.get?.('user-agent')?.slice(0, 300) || null]
+    );
     await audit(db, { actorId: user.id, action: 'auth.login', entity: 'user', entityId: user.id, req });
-    return { accessToken: signToken(user), tokenType: 'Bearer', role: user.role };
+    return { accessToken: signToken(user, s[0].id), tokenType: 'Bearer', role: user.role };
+  }
+
+  // Ends the session server-side: the token stops working immediately, in every tab/tool.
+  async function logout(user, req) {
+    await db.query('UPDATE sessions SET revoked_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL', [user.sid, user.id]);
+    await audit(db, { actorId: user.id, action: 'auth.logout', entity: 'user', entityId: user.id, req });
+    return { loggedOut: true };
   }
 
   async function setupMfa(userId) {
@@ -79,7 +91,7 @@ function createAuthService({ db, cipher }) {
     return rows[0];
   }
 
-  return { register, login, setupMfa, enableMfa, me };
+  return { register, login, logout, setupMfa, enableMfa, me };
 }
 
 module.exports = { createAuthService };

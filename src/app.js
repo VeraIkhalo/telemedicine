@@ -25,7 +25,7 @@ function createApp(container) {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css"></head>
 <body><div id="ui"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
-<script>SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#ui', persistAuthorization: true });</script>
+<script>SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#ui', persistAuthorization: false });</script>
 </body></html>`)
   );
 

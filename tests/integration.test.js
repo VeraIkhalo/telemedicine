@@ -182,6 +182,30 @@ d('telemedicine API (integration)', () => {
     expect(logs.body.length).toBeGreaterThan(0);
   });
 
+  test('search matches partial name/specialty text', async () => {
+    const partial = await request(app).get('/api/v1/doctors').query({ q: 'ayur' });
+    expect(partial.body.data.map((x) => x.id)).toContain(doctorId);
+    const generic = await request(app).get('/api/v1/doctors').query({ q: 'doctor' });
+    expect(generic.body.data.length).toBeGreaterThan(0);
+    const wildcard = await request(app).get('/api/v1/doctors').query({ q: '%' });
+    expect(wildcard.body.data).toHaveLength(0); // "%" is matched literally, not as a wildcard
+  });
+
+  test('logout ends the session server-side: the old token is rejected everywhere', async () => {
+    const token = await login('p1@t.dev');
+    expect((await request(app).get('/api/v1/auth/me').set(auth(token))).status).toBe(200);
+
+    const out = await request(app).post('/api/v1/auth/logout').set(auth(token));
+    expect(out.status).toBe(200);
+
+    expect((await request(app).get('/api/v1/auth/me').set(auth(token))).status).toBe(401);
+    const book = await request(app).post('/api/v1/consultations').set(auth(token)).set('Idempotency-Key', 'after-logout').send({ slotId: slotIds[0] });
+    expect(book.status).toBe(401);
+
+    // other sessions of the same user are unaffected
+    expect((await request(app).get('/api/v1/auth/me').set(auth(tokens.p1))).status).toBe(200);
+  });
+
   test('audit logs are append-only', async () => {
     await expect(db.query('DELETE FROM audit_logs')).rejects.toThrow(/append-only/);
   });

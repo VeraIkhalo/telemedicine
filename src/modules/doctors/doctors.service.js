@@ -13,11 +13,15 @@ function createDoctorsService({ db, cache }) {
     // Every "?" in the fragment binds to the same parameterised value (no string interpolation of input).
     const add = (sql, v) => { params.push(v); where.push(sql.replaceAll('?', '$' + params.length)); };
 
-    if (f.specialization) add('d.specialization ILIKE ?', f.specialization);
-    if (f.language) add('? = ANY(d.languages)', f.language);
+    // Escape LIKE wildcards in user input so "%" or "_" are matched literally.
+    const like = (s) => `%${s.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
+    if (f.specialization) add('d.specialization ILIKE ?', like(f.specialization));
+    if (f.language) add('? = ANY(d.languages)', f.language.toLowerCase());
     if (f.minFee != null) add('d.fee_cents >= ?', f.minFee);
     if (f.maxFee != null) add('d.fee_cents <= ?', f.maxFee);
-    if (f.q) add('(p.full_name ILIKE ? OR d.bio ILIKE ?)', `%${f.q}%`);
+    // Free text: matches doctor name, specialty or bio. "Dr"/"doctor" alone matches everyone.
+    const q = f.q?.trim().replace(/^(dr\.?|doctors?)\s*/i, '');
+    if (f.q && q) add('(p.full_name ILIKE ? OR d.specialization ILIKE ? OR d.bio ILIKE ?)', like(q));
     if (f.availableOn) {
       add(
         `EXISTS (SELECT 1 FROM availability_slots s WHERE s.doctor_id = d.id AND s.status = 'open'

@@ -24,7 +24,8 @@
 | Login failures and MFA failures audited; generic error prevents user enumeration | ✅ | `auth.service.js` |
 | Non-root, minimal container; read-only root FS in k8s | ✅ | `Dockerfile`, `infra/k8s` |
 | Dependency scanning (`npm audit`), image scanning (Trivy), SAST (CodeQL) in CI | ✅ | `.github/workflows/ci.yml` |
-| Refresh tokens + revocation list | 🔜 roadmap | |
+| Server-side sessions: logout revokes the token immediately (checked on every request) | ✅ | `sessions` table, `middleware/auth.js`, `POST /auth/logout` |
+| Refresh tokens | 🔜 roadmap | |
 
 ## 2. Data classification
 
@@ -43,7 +44,7 @@ Applicable regimes: India DPDP Act 2023, Telemedicine Practice Guidelines 2020 (
 * **At rest:** RDS storage + snapshots encrypted with a KMS key (`enable_key_rotation = true`).
 * **Application layer:** AES-256-GCM, random 96-bit IV per value, auth tag verified on decrypt (tamper detection).
 * **Rotation:** `ENCRYPTION_KEYS="v2:<new>,v1:<old>"`. New writes use `v2`; old ciphertext (prefixed `v1:`) still decrypts. A background re-encryption job uses `needsRotation()` to rewrite old rows, after which `v1` is removed. Tested in `tests/unit.test.js`.
-* **JWT secret rotation:** deploy with new secret; tokens live 15 min, so old tokens expire quickly (dual-key verification is a small extension).
+* **JWT secret rotation:** deploy with new secret; tokens live 15 min, so old tokens expire quickly (dual-key verification is a small extension). Every token is also bound to a server-side session, so logout or an admin can revoke it instantly.
 * **DB credentials:** managed and rotated by AWS Secrets Manager (`manage_master_user_password`).
 
 ## 4. Attack surface analysis

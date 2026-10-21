@@ -144,6 +144,11 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LoginResponse' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooMany' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: End the current session server-side (token stops working immediately)
+      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Unauthorized' } }
   /auth/me:
     get:
       tags: [Auth]

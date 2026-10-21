@@ -59,7 +59,7 @@
     const replayed = res.headers.get('Idempotent-Replayed') === 'true';
     logCall({ method, path, status: res.status, ms: Math.round(performance.now() - started), body, data, idem, replayed });
 
-    if (res.status === 401 && S.me) { logout('Session expired, please log in again.'); }
+    if (res.status === 401 && S.me) { logout('Your session has ended. Please log in again.', { remote: false }); }
     if (!res.ok) {
       const e = new Error(data?.error?.message || `Request failed (${res.status})`);
       e.status = res.status;
@@ -104,9 +104,15 @@
     S.tab = { patient: 'find', doctor: 'consultations', admin: 'analytics' }[data.role];
   }
 
-  function logout(msg) {
+  // Ends the session on the server first (so the token stops working everywhere),
+  // then wipes everything this page knows about the user.
+  async function logout(msg, { remote = true } = {}) {
+    if (remote && S.token) {
+      try { await api('POST', '/auth/logout'); } catch { /* already ended — still clear locally */ }
+    }
     saveToken(null);
-    S.me = null;
+    Object.assign(S, { me: null, tab: null, doctors: [], slotsByDoctor: {}, lastBooking: null, authView: 'login' });
+    $('#log').innerHTML = '';
     render();
     if (msg) toast(msg);
   }
@@ -137,7 +143,6 @@
           <label>MFA code (only if you enabled MFA)</label><input name="totp" inputmode="numeric" pattern="\\d{6}" placeholder="123456">
           <div class="actions"><button type="submit">Log in</button></div>
         </form>
-        <div class="callout">Demo password for all three: <code>Passw0rd!234</code></div>
         <p class="switch">New here? <button class="linkish" data-action="auth-view" data-view="register">Create an account</button></p>
       </section>`;
   }
@@ -201,11 +206,13 @@
   const VIEWS = {
     // ----- patient -----
     async 'patient:find'() {
+      // Show every available doctor straight away; filters narrow it down.
+      if (!S.doctors.length) S.doctors = (await api('GET', '/doctors?limit=50')).data.data;
       return `
       <section class="card">
         <h2>Find a doctor</h2>
         <form id="search-form" class="row">
-          <div><label>Specialization</label><input name="specialization" placeholder="Ayurveda"></div>
+          <div><label>Name or specialty</label><input name="q" placeholder="e.g. Ayurveda, skin, Meera"></div>
           <div><label>Language</label><input name="language" placeholder="hindi"></div>
           <div><label>Max fee (₹)</label><input name="maxFee" type="number" min="0"></div>
           <div><label>Available on</label><input name="availableOn" type="date"></div>
@@ -523,15 +530,15 @@
 
     if (form.id === 'search-form') return run(async () => {
       const q = new URLSearchParams();
-      if (f.specialization) q.set('specialization', f.specialization);
-      if (f.language) q.set('language', f.language.toLowerCase());
+      if (f.q?.trim()) q.set('q', f.q.trim());
+      if (f.language) q.set('language', f.language.trim().toLowerCase());
       if (f.maxFee) q.set('maxFee', String(Math.round(Number(f.maxFee) * 100)));
       if (f.availableOn) q.set('availableOn', f.availableOn);
       const { data } = await api('GET', '/doctors?' + q);
       S.doctors = data.data;
       S.slotsByDoctor = {};
       $('#results').innerHTML = doctorList() || '';
-      if (!S.doctors.length) $('#results').innerHTML = '<p class="muted">No doctors match these filters.</p>';
+      if (!S.doctors.length) $('#results').innerHTML = '<p class="muted">No doctors match these filters. Try a broader search, or clear the filters to see everyone.</p>';
     });
 
     if (form.id === 'slots-form') return run(async () => {

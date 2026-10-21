@@ -57,6 +57,10 @@ function createAuthRouter(service) {
     } catch (e) { next(e); }
   });
 
+  r.post('/logout', authenticate, async (req, res, next) => {
+    try { res.json(await service.logout(req.user, req)); } catch (e) { next(e); }
+  });
+
   r.get('/me', authenticate, async (req, res, next) => {
     try { res.json(await service.me(req.user.id)); } catch (e) { next(e); }
   });
