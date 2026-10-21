@@ -1,0 +1,27 @@
+groups:
+  - name: amrutam-slo
+    rules:
+      - alert: ReadLatencyP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{method="GET"}[5m]))) > 0.2
+        for: 10m
+        labels: { severity: page }
+        annotations: { summary: "p95 read latency above 200ms SLO" }
+      - alert: WriteLatencyP95High
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{method=~"POST|PATCH"}[5m]))) > 0.5
+        for: 10m
+        labels: { severity: page }
+        annotations: { summary: "p95 write latency above 500ms SLO" }
+      - alert: High5xxRate
+        expr: sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m])) / sum(rate(http_request_duration_seconds_count[5m])) > 0.005
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "5xx error rate > 0.5% (99.95% availability budget burning)" }
+      - alert: DeadJobs
+        expr: increase(jobs_processed_total{outcome="dead"}[15m]) > 0
+        labels: { severity: ticket }
+        annotations: { summary: "Background jobs moved to dead-letter" }
+      - alert: BookingConflictsSpike
+        expr: rate(bookings_total{outcome="conflict"}[5m]) > 5
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: "Unusual booking contention" }

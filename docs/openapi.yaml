@@ -1,0 +1,305 @@
+openapi: 3.0.3
+info:
+  title: Amrutam Telemedicine API
+  version: 1.0.0
+  description: |
+    Auth, doctor search and availability, booking, consultation lifecycle, prescriptions and admin analytics.
+    All write endpoints on /consultations require an `Idempotency-Key` header.
+servers:
+  - url: http://localhost:3000/api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, maxLength: 255 }
+      description: Unique per logical operation. Retries with the same key replay the original response.
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: CONFLICT }
+            message: { type: string }
+            details: { type: object }
+    RegisterRequest:
+      type: object
+      required: [email, password, fullName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10, description: "upper, lower and digit required" }
+        fullName: { type: string }
+        phone: { type: string }
+        role: { type: string, enum: [patient, doctor], default: patient }
+        doctor:
+          type: object
+          description: Required when role=doctor
+          properties:
+            specialization: { type: string }
+            yearsExperience: { type: integer }
+            feeCents: { type: integer }
+            languages: { type: array, items: { type: string } }
+            bio: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        totp: { type: string, pattern: '^\d{6}$', description: Required if MFA enabled }
+    LoginResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        role: { type: string }
+        mfaRequired: { type: boolean, description: Returned instead of a token when TOTP is needed }
+    Doctor:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        full_name: { type: string }
+        specialization: { type: string }
+        years_experience: { type: integer }
+        fee_cents: { type: integer }
+        languages: { type: array, items: { type: string } }
+        rating: { type: string }
+    Slot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time }
+        status: { type: string, enum: [open, booked, blocked] }
+    ConsultationStatus:
+      type: string
+      enum: [pending_payment, scheduled, in_progress, completed, cancelled, no_show]
+    Consultation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        patient_id: { type: string, format: uuid }
+        doctor_id: { type: string, format: uuid }
+        slot_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/ConsultationStatus' }
+        reason: { type: string }
+        notes: { type: string, description: Decrypted clinical notes (participants only) }
+        prescriptions: { type: array, items: { $ref: '#/components/schemas/Prescription' } }
+        created_at: { type: string, format: date-time }
+    PrescriptionItem:
+      type: object
+      required: [medicine, dosage, frequency, durationDays]
+      properties:
+        medicine: { type: string }
+        dosage: { type: string }
+        frequency: { type: string }
+        durationDays: { type: integer, minimum: 1 }
+    Prescription:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        items: { type: array, items: { $ref: '#/components/schemas/PrescriptionItem' } }
+        advice: { type: string }
+        created_at: { type: string, format: date-time }
+  responses:
+    BadRequest: { description: Validation failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: Missing/invalid token, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Forbidden: { description: Role not allowed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: Conflict (slot taken, invalid transition, idempotent request in progress), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    TooMany: { description: Rate limit exceeded }
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register a patient or doctor (doctors start unverified)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
+      responses:
+        '201': { description: Created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooMany' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Log in (password + TOTP when MFA is enabled)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/LoginResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooMany' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user
+      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Unauthorized' } }
+  /auth/mfa/setup:
+    post:
+      tags: [Auth]
+      summary: Generate a TOTP secret (returns otpauth URL for authenticator apps)
+      responses: { '200': { description: OK } }
+  /auth/mfa/enable:
+    post:
+      tags: [Auth]
+      summary: Confirm a TOTP code to turn on MFA
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { totp: { type: string } } } } } }
+      responses: { '200': { description: OK }, '400': { $ref: '#/components/responses/BadRequest' } }
+
+  /doctors:
+    get:
+      tags: [Doctors]
+      security: []
+      summary: Search verified doctors
+      parameters:
+        - { name: specialization, in: query, schema: { type: string } }
+        - { name: language, in: query, schema: { type: string } }
+        - { name: minFee, in: query, schema: { type: integer } }
+        - { name: maxFee, in: query, schema: { type: integer } }
+        - { name: q, in: query, schema: { type: string }, description: Name/bio text search }
+        - { name: availableOn, in: query, schema: { type: string, format: date }, description: Has an open slot that day }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  page: { type: integer }
+                  limit: { type: integer }
+                  data: { type: array, items: { $ref: '#/components/schemas/Doctor' } }
+  /doctors/me/slots:
+    post:
+      tags: [Doctors]
+      summary: Doctor publishes availability slots (role=doctor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slots:
+                  type: array
+                  maxItems: 100
+                  items: { type: object, properties: { startTime: { type: string, format: date-time }, endTime: { type: string, format: date-time } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Slot' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /doctors/{id}/slots:
+    get:
+      tags: [Doctors]
+      security: []
+      summary: List a doctor's slots in a time range (default next 14 days)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Slot' } } } } }
+
+  /consultations:
+    post:
+      tags: [Consultations]
+      summary: Book a slot (role=patient). Starts the payment saga.
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [slotId], properties: { slotId: { type: string, format: uuid }, reason: { type: string } } } } }
+      responses:
+        '201': { description: Booked (status pending_payment), content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { description: Idempotency-Key reused with a different body }
+    get:
+      tags: [Consultations]
+      summary: List my consultations (as patient or doctor)
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ConsultationStatus' } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses: { '200': { description: OK } }
+  /consultations/{id}:
+    get:
+      tags: [Consultations]
+      summary: Get consultation with notes and prescriptions (participants/admin only; access is audited)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Consultation' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /consultations/{id}/status:
+    patch:
+      tags: [Consultations]
+      summary: Move through the lifecycle (scheduled → in_progress → completed; cancel; no_show)
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [in_progress, completed, cancelled, no_show] }
+                notes: { type: string, description: Clinical notes (stored encrypted) }
+      responses:
+        '200': { description: OK }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /consultations/{id}/prescriptions:
+    post:
+      tags: [Consultations]
+      summary: Treating doctor issues a prescription
+      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items: { type: array, items: { $ref: '#/components/schemas/PrescriptionItem' } }
+                advice: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Prescription' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/analytics:
+    get:
+      tags: [Admin]
+      summary: Consultations by status, revenue, daily volume, top doctors, users by role
+      parameters: [{ name: days, in: query, schema: { type: integer, default: 7 } }]
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Forbidden' } }
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Query the audit trail
+      parameters:
+        - { name: entity, in: query, schema: { type: string } }
+        - { name: entityId, in: query, schema: { type: string } }
+        - { name: actorId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 100 } }
+      responses: { '200': { description: OK } }
+  /admin/doctors/{id}/verify:
+    post:
+      tags: [Admin]
+      summary: Verify a doctor so they appear in search
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses: { '200': { description: OK } }

@@ -1,0 +1,90 @@
+# Production deployment (Kubernetes). Secrets come from a Secret synced from AWS Secrets Manager / Vault.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amrutam-api
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: amrutam-api }
+  template:
+    metadata:
+      labels: { app: amrutam-api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector: { matchLabels: { app: amrutam-api } }
+      securityContext: { runAsNonRoot: true }
+      containers:
+        - name: api
+          image: ghcr.io/amrutam/telemedicine:latest
+          ports: [{ containerPort: 3000 }]
+          envFrom: [{ secretRef: { name: amrutam-secrets } }]
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector:4318" }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe: { httpGet: { path: /readyz, port: 3000 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: 3000 }, periodSeconds: 10 }
+          securityContext: { readOnlyRootFilesystem: true, allowPrivilegeEscalation: false }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amrutam-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: amrutam-worker }
+  template:
+    metadata:
+      labels: { app: amrutam-worker }
+    spec:
+      securityContext: { runAsNonRoot: true }
+      containers:
+        - name: worker
+          image: ghcr.io/amrutam/telemedicine:latest
+          command: ["node", "-r", "./src/observability/tracing.js", "src/jobs/worker.js"]
+          envFrom: [{ secretRef: { name: amrutam-secrets } }]
+          env: [{ name: NODE_ENV, value: production }]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: amrutam-api
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: amrutam-api }
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: amrutam-api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: amrutam-api }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amrutam-api
+spec:
+  selector: { app: amrutam-api }
+  ports: [{ port: 80, targetPort: 3000 }]
