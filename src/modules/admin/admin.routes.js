@@ -24,6 +24,11 @@ function createAdminRouter(service) {
     try { res.json(await service.auditLogs(req.query)); } catch (e) { next(e); }
   });
 
+  const doctorsSchema = z.object({ verified: z.enum(['true', 'false']).transform((v) => v === 'true').optional() });
+  r.get('/doctors', validate(doctorsSchema, 'query'), async (req, res, next) => {
+    try { res.json(await service.listDoctors(req.query)); } catch (e) { next(e); }
+  });
+
   r.post('/doctors/:id/verify', validate(idParam, 'params'), async (req, res, next) => {
     try { res.json(await service.verifyDoctor(req.user.id, req.params.id, req)); } catch (e) { next(e); }
   });

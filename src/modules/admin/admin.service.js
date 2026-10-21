@@ -57,7 +57,17 @@ function createAdminService({ db, cache }) {
     return { id: doctorId, verified: true };
   }
 
-  return { analytics, auditLogs, verifyDoctor };
+  async function listDoctors({ verified }) {
+    const { rows } = await db.query(
+      `SELECT d.id, p.full_name, u.email, d.specialization, d.fee_cents, d.verified, d.created_at
+       FROM doctors d JOIN profiles p ON p.user_id = d.id JOIN users u ON u.id = d.id
+       WHERE ($1::boolean IS NULL OR d.verified = $1) ORDER BY d.created_at DESC LIMIT 200`,
+      [verified ?? null]
+    );
+    return rows;
+  }
+
+  return { analytics, auditLogs, verifyDoctor, listDoctors };
 }
 
 module.exports = { createAdminService };

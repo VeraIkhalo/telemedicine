@@ -8,6 +8,14 @@ Node.js (Express) + PostgreSQL backend for Amrutam's telemedicine platform: auth
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3 spec (paste into https://editor.swagger.io) |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security checklist, data classification, threat model (STRIDE), OWASP mapping, key rotation |
 
+## Test console (frontend)
+
+Open **http://localhost:3000** once the API is running. Log in with one click as a demo patient, doctor or admin, then:
+patient → search doctors, book a slot, resend the same booking to see idempotency, view notes/prescriptions;
+doctor → publish slots, start/complete consultations with encrypted notes, write prescriptions;
+admin → analytics, verify doctors, browse the audit log. A side panel logs every API call with its request/response.
+Interactive API docs: **http://localhost:3000/docs**.
+
 ## Quick start (Docker — everything in one command)
 
 ```bash

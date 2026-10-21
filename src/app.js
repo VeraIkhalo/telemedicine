@@ -30,6 +30,8 @@ function createApp(container) {
   );
 
   app.use(helmet());
+  // Test console UI (static, same origin — no CORS needed).
+  app.use(express.static(path.join(__dirname, '..', 'public')));
   app.use(express.json({ limit: '100kb' }));
   app.use(
     pinoHttp({

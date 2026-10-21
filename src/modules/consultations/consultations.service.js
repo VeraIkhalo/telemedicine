@@ -69,10 +69,16 @@ function createConsultationsService({ db, cipher, cache }) {
   async function list(user, { status, page, limit }) {
     const col = user.role === 'doctor' ? 'doctor_id' : 'patient_id';
     const params = [user.id];
-    let sql = `SELECT id, patient_id, doctor_id, slot_id, status, reason, created_at FROM consultations WHERE ${col} = $1`;
-    if (status) { params.push(status); sql += ` AND status = $${params.length}`; }
+    let sql = `SELECT c.id, c.patient_id, c.doctor_id, c.slot_id, c.status, c.reason, c.created_at,
+                      s.start_time, pp.full_name AS patient_name, dp.full_name AS doctor_name
+               FROM consultations c
+               JOIN availability_slots s ON s.id = c.slot_id
+               JOIN profiles pp ON pp.user_id = c.patient_id
+               JOIN profiles dp ON dp.user_id = c.doctor_id
+               WHERE c.${col} = $1`;
+    if (status) { params.push(status); sql += ` AND c.status = $${params.length}`; }
     params.push(limit, (page - 1) * limit);
-    sql += ` ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    sql += ` ORDER BY c.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
     const { rows } = await db.query(sql, params);
     return { page, limit, data: rows };
   }
