@@ -131,12 +131,6 @@
     return `
       <section class="card">
         <h2>Log in</h2>
-        <p class="muted">Use a demo account, or your own after registering.</p>
-        <div class="demo-users">
-          <button class="ghost" data-action="demo" data-email="patient@amrutam.dev"><span>Patient — Priya</span><small>book &amp; view</small></button>
-          <button class="ghost" data-action="demo" data-email="doctor@amrutam.dev"><span>Doctor — Dr. Arjun</span><small>slots, consult, prescribe</small></button>
-          <button class="ghost" data-action="demo" data-email="admin@amrutam.dev"><span>Admin</span><small>analytics &amp; audit</small></button>
-        </div>
         <form id="login-form">
           <label>Email</label><input name="email" type="email" required>
           <label>Password</label><input name="password" type="password" required>
@@ -401,13 +395,6 @@
     if (action === 'logout') return logout();
     if (action === 'auth-view') { S.authView = el.dataset.view; return render(); }
     if (action === 'tab') { S.tab = el.dataset.tab; return render(); }
-
-    if (action === 'demo') {
-      const form = $('#login-form');
-      form.email.value = el.dataset.email;
-      form.password.value = 'Passw0rd!234';
-      return form.requestSubmit();
-    }
 
     if (action === 'slots') return run(async () => {
       const { data } = await api('GET', `/doctors/${el.dataset.id}/slots`);
